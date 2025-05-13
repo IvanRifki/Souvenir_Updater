@@ -12,7 +12,7 @@ app.use(express.json());
 
 // Environment variables dengan fallback
 const FETCH_URL = process.env.FETCH_URL || 'https://script.google.com/macros/s/AKfycbx4REuswIcUDa7eDOGizsHDgRyyGLxs6PMMvm0wGKnCTQ5Z-zX9tzFA63XKn083fY6U/exec';
-const UPDATE_URL = process.env.UPDATE_URL || 'https://script.google.com/macros/s/AKfycbxjqgttAuRUVoHg3IJ4FiQXzwVIExEhICvIi_04hBZIOIcms53GTl-s_VZCNnuKIrrZ/exec';
+const UPDATE_URL = process.env.UPDATE_URL || 'https://script.google.com/macros/s/AKfycbx4REuswIcUDa7eDOGizsHDgRyyGLxs6PMMvm0wGKnCTQ5Z-zX9tzFA63XKn083fY6U/exec';
 
 // Endpoint untuk mendapatkan data tamu
 app.get('/api/guests', async (req, res) => {
@@ -32,6 +32,8 @@ app.get('/api/guests', async (req, res) => {
     if (!response.data) {
       throw new Error('Empty response from Google Script');
     }
+
+    console.log('Response from Google Script:', response.data);
 
     res.json(response.data);
   } catch (error) {
@@ -54,19 +56,38 @@ app.get('/api/guests', async (req, res) => {
 // Endpoint untuk update status souvenir
 app.post('/api/update-souvenir', async (req, res) => {
   try {
-    const { row, status } = req.body;
+    let { row, status } = req.body;
     
-    // Validasi lebih ketat
-    if (typeof row !== 'number' || !['Sudah diambil', 'Belum diambil'].includes(status)) {
+    // Convert row to number
+    row = Number(row);
+    
+    // Validasi dasar
+    if (isNaN(row)) {
       return res.status(400).json({ 
         error: 'Invalid input',
-        details: 'Row must be a number and status must be valid' 
+        details: 'Row must be a number' 
       });
     }
 
+    // Normalisasi status
+    const normalizedStatus = (status) => {
+      const statusLower = status.toLowerCase().trim();
+      
+      if (statusLower === 'sudah diambil') {
+        return 'Sudah diambil';
+      } else if (statusLower === 'belum diambil') {
+        return 'Belum diambil';
+      } else {
+        return '-'; // Default value untuk status tidak valid
+      }
+    };
+
+    const finalStatus = normalizedStatus(status);
+
+    // Kirim ke Google Apps Script
     const response = await axios.post(UPDATE_URL, {
-      row,
-      status
+      row: row + 1, // +1 jika header dihitung sebagai row 1
+      status: finalStatus
     }, {
       timeout: 10000,
       headers: {
@@ -76,17 +97,20 @@ app.post('/api/update-souvenir', async (req, res) => {
 
     res.json({ 
       success: true,
-      message: response.data 
-    });
-  } catch (error) {
-    console.error('Update error:', {
-      requestBody: req.body,
-      errorDetails: error.response?.data || error.message
+      message: response.data,
+      updatedData: {
+        row,
+        originalStatus: status,
+        finalStatus
+      }
     });
     
+  } catch (error) {
+    console.error('Update error:', error);
     res.status(500).json({
       error: 'Failed to update souvenir status',
-      details: error.response?.data || error.message
+      details: error.message,
+      suggestion: 'Check server logs for more details'
     });
   }
 });
