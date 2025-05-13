@@ -10,18 +10,44 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// Environment variables
-const FETCH_URL = process.env.FETCH_URL || 'https://script.google.com/macros/s/AKfycbzEqrG3i8tW0EZ2802Im878byeDyvpa_oRFU3H80FBlQLagDVnH_3KqWvQuWZo6lZgU/exec';
+// Environment variables dengan fallback
+const FETCH_URL = process.env.FETCH_URL || 'https://script.google.com/macros/s/AKfycbx4REuswIcUDa7eDOGizsHDgRyyGLxs6PMMvm0wGKnCTQ5Z-zX9tzFA63XKn083fY6U/exec';
 const UPDATE_URL = process.env.UPDATE_URL || 'https://script.google.com/macros/s/AKfycbxjqgttAuRUVoHg3IJ4FiQXzwVIExEhICvIi_04hBZIOIcms53GTl-s_VZCNnuKIrrZ/exec';
 
 // Endpoint untuk mendapatkan data tamu
 app.get('/api/guests', async (req, res) => {
   try {
-    const response = await axios.get(FETCH_URL);
+    const timestamp = Date.now(); // hindari cache
+    const response = await axios.get(FETCH_URL, {
+      params: {
+        action: 'getGuests',
+        t: timestamp
+      },
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    if (!response.data) {
+      throw new Error('Empty response from Google Script');
+    }
+
     res.json(response.data);
   } catch (error) {
-    console.error('Error fetching guest data:', error);
-    res.status(500).json({ error: 'Failed to fetch guest data' });
+    console.error('Full error:', {
+      message: error.message,
+      config: error.config,
+      response: error.response?.data,
+      stack: error.stack
+    });
+    
+    res.status(500).json({ 
+      error: 'Failed to fetch data',
+      details: error.message,
+      url: error.config?.url,
+      status: error.response?.status
+    });
   }
 });
 
@@ -30,23 +56,49 @@ app.post('/api/update-souvenir', async (req, res) => {
   try {
     const { row, status } = req.body;
     
-    if (!row || !status) {
-      return res.status(400).json({ error: 'Row and status are required' });
+    // Validasi lebih ketat
+    if (typeof row !== 'number' || !['Sudah diambil', 'Belum diambil'].includes(status)) {
+      return res.status(400).json({ 
+        error: 'Invalid input',
+        details: 'Row must be a number and status must be valid' 
+      });
     }
 
     const response = await axios.post(UPDATE_URL, {
       row,
       status
+    }, {
+      timeout: 10000,
+      headers: {
+        'Content-Type': 'application/json'
+      }
     });
 
-    res.json({ message: response.data });
+    res.json({ 
+      success: true,
+      message: response.data 
+    });
   } catch (error) {
-    console.error('Error updating souvenir status:', error);
-    res.status(500).json({ error: 'Failed to update souvenir status' });
+    console.error('Update error:', {
+      requestBody: req.body,
+      errorDetails: error.response?.data || error.message
+    });
+    
+    res.status(500).json({
+      error: 'Failed to update souvenir status',
+      details: error.response?.data || error.message
+    });
   }
+});
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'OK' });
 });
 
 // Start server
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log(`Fetch URL: ${FETCH_URL}`);
+  console.log(`Update URL: ${UPDATE_URL}`);
 });
