@@ -102,7 +102,7 @@ app.post('/api/update-souvenir', async (req, res) => {
 
     res.json({ 
       success: true,
-      message: response.data,
+      // message: response.data,
       updatedData: {
         row,
         originalStatus: status,
