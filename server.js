@@ -2,8 +2,14 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
+const http = require('http');
+const https = require('https');
+
 
 const app = express();
+const httpAgent = new http.Agent({ keepAlive: true });
+const httpsAgent = new https.Agent({ keepAlive: true });
+
 const PORT = process.env.PORT || 3000;
 
 // Middleware
@@ -23,10 +29,9 @@ app.get('/api/guests', async (req, res) => {
         action: 'getGuests',
         t: timestamp
       },
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      timeout: 10000
+      timeout: 10000,
+      httpAgent,
+      httpsAgent
     });
 
     if (!response.data) {
@@ -83,6 +88,7 @@ app.post('/api/update-souvenir', async (req, res) => {
     };
 
     const finalStatus = normalizedStatus(status);
+    
 
     // Kirim ke Google Apps Script
     const response = await axios.post(UPDATE_URL, {
@@ -90,9 +96,8 @@ app.post('/api/update-souvenir', async (req, res) => {
       status: finalStatus
     }, {
       timeout: 10000,
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      httpAgent,
+      httpsAgent
     });
 
     res.json({ 
